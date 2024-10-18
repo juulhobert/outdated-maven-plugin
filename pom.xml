@@ -45,7 +45,8 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
 
         <jackson-jr-objects.version>2.18.0</jackson-jr-objects.version>
         <junit-jupiter.version>5.11.2</junit-jupiter.version>
@@ -68,8 +69,11 @@
         <jreleaser-maven-plugin.version>1.14.0</jreleaser-maven-plugin.version>
         <spotless-maven-plugin.version>2.43.0</spotless-maven-plugin.version>
         <slf4j.version>2.0.16</slf4j.version>
-    </properties>
 
+        <!-- POC properties -->
+        <lombok.version>1.18.34</lombok.version>
+        <jackson.version>2.17.2</jackson.version>
+    </properties>
 
     <dependencyManagement>
         <dependencies>
@@ -126,6 +130,14 @@
                 <artifactId>maven-plugin-api</artifactId>
                 <version>${maven-dependencies.version}</version>
                 <scope>provided</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <scope>import</scope>
+                <type>pom</type>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -186,6 +198,40 @@
             <artifactId>slf4j-nop</artifactId>
             <version>${slf4j.version}</version>
             <scope>test</scope>
+        </dependency>
+
+        <!-- POC dependencies -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-xml</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 
@@ -255,6 +301,21 @@
             </plugins>
         </pluginManagement>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${maven.compiler.source}</source>
+                    <target>${maven.compiler.target}</target>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-plugin-plugin</artifactId>
@@ -366,43 +427,6 @@
                                 </configuration>
                             </execution>
                         </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-        <profile>
-            <id>release</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.jreleaser</groupId>
-                        <artifactId>jreleaser-maven-plugin</artifactId>
-                        <configuration>
-                            <jreleaser>
-                                <signing>
-                                    <active>ALWAYS</active>
-                                    <armored>true</armored>
-                                </signing>
-                                <release>
-                                    <github>
-                                        <owner>Giovds</owner>
-                                        <name>${project.artifactId}</name>
-                                        <overwrite>true</overwrite>
-                                    </github>
-                                </release>
-                                <deploy>
-                                    <maven>
-                                        <mavenCentral>
-                                            <sonatype>
-                                                <active>ALWAYS</active>
-                                                <url>https://central.sonatype.com/api/v1/publisher</url>
-                                                <stagingRepositories>target/staging-deploy</stagingRepositories>
-                                            </sonatype>
-                                        </mavenCentral>
-                                    </maven>
-                                </deploy>
-                            </jreleaser>
-                        </configuration>
                     </plugin>
                 </plugins>
             </build>

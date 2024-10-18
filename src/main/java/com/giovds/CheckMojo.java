@@ -1,5 +1,6 @@
 package com.giovds;
 
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.giovds.dto.DependencyResponse;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.plugin.AbstractMojo;
@@ -53,6 +54,8 @@ public class CheckMojo extends AbstractMojo {
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
+        var blaat = new XmlMapper();
+
         final List<Dependency> dependencies = project.getDependencies();
 
         if (dependencies.isEmpty()) {
