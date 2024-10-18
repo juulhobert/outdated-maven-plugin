@@ -1,6 +1,5 @@
 package com.giovds.poc.github;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.giovds.poc.JsonBodyHandler;
 import com.giovds.poc.github.model.extenal.CommitActivity;
 import com.giovds.poc.github.model.extenal.ContributorStat;
@@ -27,13 +26,18 @@ public class GithubCollector implements GithubCollectorInterface {
 
     private final String baseUrl;
     private final HttpClient httpClient;
-    private final ObjectMapper objectMapper;
     private final Log log;
 
-    public GithubCollector(String baseUrl, HttpClient httpClient, ObjectMapper objectMapper, Log log) {
+    public GithubCollector(Log log) {
+        this("https://api.github.com", HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_2)
+                .connectTimeout(Duration.ofSeconds(30))
+                .build(), log);
+    }
+
+    public GithubCollector(String baseUrl, HttpClient httpClient, Log log) {
         this.baseUrl = baseUrl;
         this.httpClient = httpClient;
-        this.objectMapper = objectMapper;
         this.log = log;
 
         if (GITHUB_TOKEN == null || GITHUB_TOKEN.isEmpty()) {
@@ -115,7 +119,7 @@ public class GithubCollector implements GithubCollectorInterface {
         }
 
         var request = requestBuilder.build();
-        return httpClient.sendAsync(request, new JsonBodyHandler<>(responseType, objectMapper));
+        return httpClient.sendAsync(request, new JsonBodyHandler<>(responseType));
     }
 
     private static List<RangeSummary> extractCommits(CommitActivity[] commitActivity) {

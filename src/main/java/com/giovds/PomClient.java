@@ -1,8 +1,16 @@
 package com.giovds;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.giovds.dto.PomResponse;
+import com.giovds.dto.Scm;
+import org.apache.maven.plugin.logging.Log;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -16,17 +24,22 @@ public class PomClient implements PomClientInterface {
     private final String basePath;
     private final String pomPathTemplate;
 
+    private final DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
+
     private final HttpClient client = HttpClient.newBuilder()
-//            .version(HttpClient.Version.HTTP_2)
+            .version(HttpClient.Version.HTTP_2)
             .build();
 
-    public PomClient() {
-        this("https://repo1.maven.org", "/maven2/%s/%s/%s/%s-%s.pom");
+    private final Log log;
+
+    public PomClient(Log log) {
+        this("https://repo1.maven.org", "/maven2/%s/%s/%s/%s-%s.pom", log);
     }
 
-    public PomClient(String basePath, String pomPathTemplate) {
+    public PomClient(String basePath, String pomPathTemplate, Log log) {
         this.basePath = basePath;
         this.pomPathTemplate = pomPathTemplate;
+        this.log = log;
     }
 
     public PomResponse getPom(String group, String artifact, String version) throws IOException, InterruptedException {
@@ -36,7 +49,7 @@ public class PomClient implements PomClientInterface {
                 .uri(URI.create(basePath + path))
                 .build();
 
-        System.out.println("Fetching POM from: " + request.uri());
+        log.debug("Fetching POM from: %s".formatted(request.uri()));
 
         return client.send(request, new PomResponseBodyHandler()).body();
     }
@@ -60,13 +73,32 @@ public class PomClient implements PomClientInterface {
 
         private PomResponse toPomResponse(final InputStream inputStream) {
             try (final InputStream input = inputStream) {
-                var blaat = new String(input.readAllBytes());
-                System.out.println(blaat);
+                DocumentBuilder documentBuilder = PomClient.this.documentBuilderFactory.newDocumentBuilder();
+                Document doc = documentBuilder.parse(input);
 
-                final XmlMapper xmlMapper = new XmlMapper();
+                doc.getDocumentElement().normalize();
 
-                return xmlMapper.readValue(blaat, PomResponse.class);
-            } catch (IOException e) {
+                Element root = doc.getDocumentElement();
+                NodeList urlNodes = root.getElementsByTagName("url");
+
+                if (urlNodes.getLength() == 0) {
+                    return PomResponse.empty();
+                }
+                String url = urlNodes.item(0).getTextContent();
+
+                Scm scm = Scm.empty();
+                NodeList scmNodes = root.getElementsByTagName("scm");
+                if (scmNodes.getLength() > 0) {
+                    Element scmElement = (Element) scmNodes.item(0);
+                    NodeList scmUrlNodes = scmElement.getElementsByTagName("url");
+                    if (scmUrlNodes.getLength() > 0) {
+                        String scmUrl = scmUrlNodes.item(0).getTextContent();
+                        scm = new Scm(scmUrl);
+                    }
+                }
+
+                return new PomResponse(url, scm);
+            } catch (IOException | ParserConfigurationException | SAXException e) {
                 throw new RuntimeException(e);
             }
         }

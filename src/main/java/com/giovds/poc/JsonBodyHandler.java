@@ -1,6 +1,6 @@
 package com.giovds.poc;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.jr.ob.JSON;
 
 import java.io.IOException;
 import java.net.http.HttpResponse;
@@ -8,11 +8,9 @@ import java.nio.charset.StandardCharsets;
 
 public class JsonBodyHandler<R> implements HttpResponse.BodyHandler<R> {
     private final Class<R> resultClass;
-    private final ObjectMapper objectMapper;
 
-    public JsonBodyHandler(Class<R> resultClass, ObjectMapper objectMapper) {
+    public JsonBodyHandler(Class<R> resultClass) {
         this.resultClass = resultClass;
-        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -27,16 +25,16 @@ public class JsonBodyHandler<R> implements HttpResponse.BodyHandler<R> {
             return HttpResponse.BodySubscribers.replacing(null);
         }
 
-        return asJSON(objectMapper, resultClass);
+        return asJSON(resultClass);
     }
 
-    public static <R> HttpResponse.BodySubscriber<R> asJSON(ObjectMapper objectMapper, Class<R> targetType) {
+    public static <R> HttpResponse.BodySubscriber<R> asJSON(Class<R> targetType) {
         HttpResponse.BodySubscriber<String> upstream = HttpResponse.BodySubscribers.ofString(StandardCharsets.UTF_8);
         return HttpResponse.BodySubscribers.mapping(
                 upstream,
                 (String body) -> {
                     try {
-                        return objectMapper.readValue(body, targetType);
+                        return JSON.std.beanFrom(targetType, body);
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }

@@ -1,7 +1,11 @@
 package com.giovds.dto;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+public record PomResponse(String url, Scm scm) {
+    public static PomResponse empty() {
+        return new PomResponse(null, Scm.empty());
+    }
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-public record PomResponse(String url) {
+    public String scmUrl() {
+        return scm.url();
+    }
 }
