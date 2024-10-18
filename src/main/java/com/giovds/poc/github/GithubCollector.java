@@ -1,5 +1,6 @@
 package com.giovds.poc.github;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.giovds.poc.JsonBodyHandler;
 import com.giovds.poc.github.model.extenal.CommitActivity;
 import com.giovds.poc.github.model.extenal.ContributorStat;
@@ -17,11 +18,11 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 public class GithubCollector implements GithubCollectorInterface {
-    private static final ScheduledExecutorService SCHEDULER = Executors.newScheduledThreadPool(1);
     private static final String GITHUB_TOKEN = System.getenv("GITHUB_TOKEN");
 
     private final String baseUrl;
@@ -29,10 +30,7 @@ public class GithubCollector implements GithubCollectorInterface {
     private final Log log;
 
     public GithubCollector(Log log) {
-        this("https://api.github.com", HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_2)
-                .connectTimeout(Duration.ofSeconds(30))
-                .build(), log);
+        this("https://api.github.com", HttpClient.newHttpClient(), log);
     }
 
     public GithubCollector(String baseUrl, HttpClient httpClient, Log log) {
@@ -48,14 +46,14 @@ public class GithubCollector implements GithubCollectorInterface {
     }
 
     @Override
-    public Future<Collected> collect(String owner, String repo) throws ExecutionException, InterruptedException {
+    public Collected collect(String owner, String repo) throws InterruptedException, ExecutionException {
         var repository = getRepository(owner, repo).get();
         var contributors = getContributors(repository).get();
         var commitActivity = getCommitActivity(repository).get();
 
         var summary = extractCommits(commitActivity);
 
-        return CompletableFuture.completedFuture(Collected.builder()
+        return Collected.builder()
                 .homepage(repository.getHomepage())
                 .starsCount(repository.getStargazersCount())
                 .forksCount(repository.getForksCount())
@@ -67,40 +65,44 @@ public class GithubCollector implements GithubCollectorInterface {
                                 .build()
                 ).toList().reversed())
                 .commits(summary)
-                .build());
+                .build();
     }
 
-    private Future<Repository> getRepository(String owner, String repo) {
-        return request(String.format("repos/%s/%s", owner, repo), Repository.class);
+    private CompletableFuture<Repository> getRepository(String owner, String repo) throws InterruptedException {
+        return requestAsync(String.format("repos/%s/%s", owner, repo), Repository.class);
     }
 
-    private Future<ContributorStat[]> getContributors(Repository repository) {
-        return request("%s/stats/contributors".formatted(repository.getUrl()), ContributorStat[].class, true);
+    private CompletableFuture<ContributorStat[]> getContributors(Repository repository) throws InterruptedException {
+        return requestAsync("%s/stats/contributors".formatted(repository.getUrl()), ContributorStat[].class, true);
     }
 
-    private Future<CommitActivity[]> getCommitActivity(Repository repository) {
-        return request("%s/stats/commit_activity".formatted(repository.getUrl()), CommitActivity[].class, true);
+    private CompletableFuture<CommitActivity[]> getCommitActivity(Repository repository) throws InterruptedException {
+        return requestAsync("%s/stats/commit_activity".formatted(repository.getUrl()), CommitActivity[].class, true);
     }
 
-    private <R> CompletableFuture<R> request(String path, Class<R> responseType) {
-        return request(path, responseType, false);
+    private <R> CompletableFuture<R> requestAsync(String path, Class<R> responseType) throws InterruptedException {
+        return requestAsync(path, responseType, false);
     }
 
-    private <R> CompletableFuture<R> request(String path, Class<R> responseType, boolean isUri) {
-        return sendRequestAsync(path, responseType, isUri).thenApply(res -> {
-            if (res.headers().firstValue("X-RateLimit-Remaining").isPresent() && Integer.parseInt(res.headers().firstValue("X-RateLimit-Remaining").get()) == 0) {
-                long resetTime = Long.parseLong(res.headers().firstValue("X-RateLimit-Reset").get());
-                long delay = Math.max(0, resetTime - System.currentTimeMillis() / 1000);
+    private <R> CompletableFuture<R> requestAsync(String path, Class<R> responseType, boolean isUri) throws InterruptedException {
+        var res = sendRequestAsync(path, responseType, isUri);
 
-                log.info("Rate limit exceeded, waiting for %s seconds".formatted(delay));
+        var remaining = Integer.parseInt(res.join().headers().firstValue("X-RateLimit-Remaining").orElse("0"));
+        if (remaining == 0) {
+            long delay = Math.max(0, Long.parseLong(res.join().headers().firstValue("X-RateLimit-Reset").orElse("0")) - System.currentTimeMillis());
 
-                CompletableFuture<R> future = new CompletableFuture<>();
-                SCHEDULER.schedule(() -> sendRequestAsync(path, responseType).thenAccept(r -> future.complete(r.body())), delay, TimeUnit.SECONDS);
-                return future.join();
-            }
+            log.info("Rate limit exceeded, waiting for %s ms".formatted(delay));
+            Thread.sleep(delay);
 
-            return res.body();
-        });
+            return requestAsync(path, responseType, isUri);
+        }
+
+        if (res.join().statusCode() == 202) {
+            Thread.sleep(10);
+            return requestAsync(path, responseType, isUri);
+        }
+
+        return res.thenApply(HttpResponse::body);
     }
 
     private <R> CompletableFuture<HttpResponse<R>> sendRequestAsync(String pathOrUri, Class<R> responseType) {
@@ -112,7 +114,7 @@ public class GithubCollector implements GithubCollectorInterface {
         var requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Accept", "application/vnd.github.v3+json")
-                .timeout(Duration.ofSeconds(10));
+                .timeout(Duration.ofSeconds(30));
 
         if (GITHUB_TOKEN != null && !GITHUB_TOKEN.isEmpty()) {
             requestBuilder.header("Authorization", "Bearer %s".formatted(GITHUB_TOKEN));

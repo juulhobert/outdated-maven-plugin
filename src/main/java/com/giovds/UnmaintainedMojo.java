@@ -19,8 +19,6 @@ import org.apache.maven.project.MavenProject;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 @Mojo(name = "unmaintained",
@@ -77,8 +75,6 @@ public class UnmaintainedMojo extends AbstractMojo {
                 })
                 .collect(Collectors.toMap(DependencyPomResponsePair::dependency, DependencyPomResponsePair::pomResponse));
 
-
-
         for (Dependency dependency : pomResponses.keySet()) {
             final PomResponse pomResponse = pomResponses.get(dependency);
             final String projectUrl = pomResponse.url();
@@ -97,8 +93,8 @@ public class UnmaintainedMojo extends AbstractMojo {
 
             Collected collected;
             try {
-                collected = githubCollector.collect(guess.owner(), guess.repo()).get(30L, TimeUnit.SECONDS);
-            } catch (ExecutionException | InterruptedException | TimeoutException e) {
+                collected = githubCollector.collect(guess.owner(), guess.repo());
+            } catch (ExecutionException | InterruptedException e) {
                 throw new MojoFailureException("Failed to collect Github data for %s".formatted(dependency.getManagementKey()), e);
             }
 

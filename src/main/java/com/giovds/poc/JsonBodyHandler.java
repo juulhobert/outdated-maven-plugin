@@ -14,21 +14,20 @@ public class JsonBodyHandler<R> implements HttpResponse.BodyHandler<R> {
     }
 
     @Override
-    public HttpResponse.BodySubscriber<R> apply(HttpResponse.ResponseInfo responseInfo) {
-        // Print rate limit information
-        if (responseInfo.headers().firstValue("X-RateLimit-Remaining").isPresent()) {
-            System.out.println("Rate limit: " + responseInfo.headers().firstValue("X-RateLimit-Remaining").get());
-        }
-
-
-        if (responseInfo.headers().firstValue("X-RateLimit-Remaining").isPresent() && Integer.parseInt(responseInfo.headers().firstValue("X-RateLimit-Remaining").get()) == 0) {
+    public HttpResponse.BodySubscriber<R> apply(HttpResponse.ResponseInfo res) {
+        if (res.statusCode() == 202) {
             return HttpResponse.BodySubscribers.replacing(null);
         }
 
-        return asJSON(resultClass);
+        var remaining = res.headers().firstValue("X-RateLimit-Remaining").orElse("0");
+        if ("0".equals(remaining)) {
+            return HttpResponse.BodySubscribers.replacing(null);
+        }
+
+        return asJSON(res, resultClass);
     }
 
-    public static <R> HttpResponse.BodySubscriber<R> asJSON(Class<R> targetType) {
+    public static <R> HttpResponse.BodySubscriber<R> asJSON(HttpResponse.ResponseInfo res, Class<R> targetType) {
         HttpResponse.BodySubscriber<String> upstream = HttpResponse.BodySubscribers.ofString(StandardCharsets.UTF_8);
         return HttpResponse.BodySubscribers.mapping(
                 upstream,
@@ -36,6 +35,10 @@ public class JsonBodyHandler<R> implements HttpResponse.BodyHandler<R> {
                     try {
                         return JSON.std.beanFrom(targetType, body);
                     } catch (IOException e) {
+                        System.out.printf("Status %s, Failed for body: %s%n", res.statusCode(), body);
+                        res.headers().map().forEach((k, v) -> {
+                            System.out.println(k + ": " + v);
+                        });
                         throw new RuntimeException(e);
                     }
                 });
